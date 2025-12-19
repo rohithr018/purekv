@@ -1,0 +1,36 @@
+#Build Artifacts
+kv_engine
+*.o
+*.a
+*.so
+build/
+out/
+
+# Debug Files
+*.log
+*.tmp
+*.prof
+perf.data*
+gmon.out
+
+# Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Os
+.DS_Store
+
+# Storage Engine Files
+data/
+wal/
+segments/
+sstables/
+*.sst
+*.wal
+
+# Test Artifacts
+tests/output/
+coverage/
