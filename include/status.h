@@ -4,8 +4,9 @@
 using namespace std;
 
 class Status{
-    bool ok_;
-    string msg_;
+    private:
+        bool ok_;
+        string msg_;
 
     public:
         Status(bool ok = true, string msg = "") : ok_(ok), msg_(msg) {}
