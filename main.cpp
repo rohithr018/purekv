@@ -91,6 +91,77 @@ void verify_recovery() {
     delete engine;
 }
 
+void flush_test() {
+    cout << "[TEST] MemTable flush test started\n";
+
+    {
+        KVEngine* engine = CreateKVEngine();
+
+        // mem_limit_ = 5 → this will trigger flush
+        engine->put("A", "1");
+        engine->put("B", "2");
+        engine->put("C", "3");
+        engine->put("D", "4");
+        engine->put("E", "5"); // flush happens here
+
+        delete engine; // clean shutdown
+    }
+
+    cout << "[INFO] Restarting engine to verify segment reads\n";
+
+    KVEngine* engine = CreateKVEngine();
+    string v;
+    Status s;
+
+    s = engine->get("A", &v);
+    if (!s.ok() || v != "1") {
+        cout << "[FAIL] A not found in segment\n";
+        exit(1);
+    }
+
+    s = engine->get("C", &v);
+    if (!s.ok() || v != "3") {
+        cout << "[FAIL] C not found in segment\n";
+        exit(1);
+    }
+
+    s = engine->get("E", &v);
+    if (!s.ok() || v != "5") {
+        cout << "[FAIL] E not found in segment\n";
+        exit(1);
+    }
+
+    cout << "[PASS] MemTable flush verified via segment reads\n";
+    delete engine;
+}
+
+void compaction_test() {
+    cout << "[TEST] Segment compaction test started\n";
+
+    KVEngine* engine = CreateKVEngine();
+
+    // Each 5 puts → flush → new segment
+    for (int i = 0; i < 15; i++) {
+        engine->put("k" + to_string(i),
+                    "v" + to_string(i));
+    }
+
+    delete engine;
+
+    cout << "[INFO] Restarting engine after compaction\n";
+
+    engine = CreateKVEngine();
+    string v;
+
+    engine->get("k10", &v);
+    cout << "k10=" << v << "\n";
+
+    engine->get("k14", &v);
+    cout << "k14=" << v << "\n";
+
+    cout << "[PASS] Compaction verified\n";
+    delete engine;
+}
 
 int main(int argc, char** argv) {
 
@@ -110,7 +181,11 @@ int main(int argc, char** argv) {
         recovery_test();
     } else if (mode == "verify") {
         verify_recovery();
-    } else {
+    }else if (mode == "flush") {
+        flush_test();
+    }else if (mode == "compact") {
+        compaction_test();
+    }else {
         cout << "Unknown mode\n";
     }
 

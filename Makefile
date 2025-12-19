@@ -7,7 +7,8 @@ TARGET := $(BUILD)/kv_engine
 
 SRC := main.cpp \
        src/kv_engine.cpp \
-       src/wal.cpp
+       src/wal.cpp \
+	   src/segment.cpp
 
 OBJ := $(patsubst %.cpp,$(BUILD)/%.o,$(SRC))
 
@@ -29,4 +30,4 @@ clean:
 	rm -rf $(BUILD)
 
 distclean: clean
-	rm -rf $(BUILD) wal
+	rm -rf $(BUILD) wal segments
