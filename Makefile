@@ -1,33 +1,51 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -Iinclude 
+CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -Iinclude
 LDFLAGS := -lz
 
 BUILD := build
+
 TARGET := $(BUILD)/kv_engine
+BENCH  := $(BUILD)/kv_bench
 
-SRC := main.cpp \
-       src/kv_engine.cpp \
-       src/wal.cpp \
-	   src/segment.cpp
+#source files
+ENGINE_SRC := src/kv_engine.cpp \
+              src/wal.cpp \
+              src/segment.cpp
 
-OBJ := $(patsubst %.cpp,$(BUILD)/%.o,$(SRC))
+APP_SRC := main.cpp
+BENCH_SRC := bench/bench.cpp
 
-.PHONY: all run clean distclean
+ENGINE_OBJ := $(patsubst %.cpp,$(BUILD)/%.o,$(ENGINE_SRC))
+APP_OBJ    := $(patsubst %.cpp,$(BUILD)/%.o,$(APP_SRC))
+BENCH_OBJ  := $(patsubst %.cpp,$(BUILD)/%.o,$(BENCH_SRC))
 
-all: $(TARGET)
+.PHONY: all run bench clean distclean
 
-$(TARGET): $(OBJ)
+# all target
+all: $(TARGET) $(BENCH)
+
+# kv_engine build
+$(TARGET): $(ENGINE_OBJ) $(APP_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+# kv_bench build
+$(BENCH): $(ENGINE_OBJ) $(BENCH_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+# compilation rule
 $(BUILD)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-run: all
+# helpers
+run:
 	./$(TARGET) $(ARGS)
+
+bench:
+	./$(BENCH) $(ARGS)
 
 clean:
 	rm -rf $(BUILD)
 
-distclean: clean
+distclean:
 	rm -rf $(BUILD) wal segments
