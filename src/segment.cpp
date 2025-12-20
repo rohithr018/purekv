@@ -3,11 +3,14 @@
 #include <unistd.h>
 #include <cstring>
 #include <cstdint>
+#include <zlib.h>
+#include <vector>
 
 
 using namespace std;
 
 /*
+    | uint32 crc     |
     | uint32 key_len |
     | uint32 val_len |
     | key bytes      |
@@ -43,11 +46,22 @@ Status write_segment(
         uint32_t klen=key.size();
         uint32_t vlen=value.size();
 
+        vector<char>buf(sizeof(klen)+sizeof(vlen)+klen+vlen);
+        size_t off=0;
+
+        memcpy(buf.data()+off,&klen,sizeof(klen));off+=sizeof(klen);
+        memcpy(buf.data()+off,&vlen,sizeof(vlen));off+=sizeof(vlen);
+        memcpy(buf.data()+off,key.data(),klen);off+=klen;
+        memcpy(buf.data()+off,value.data(),vlen);
+
+        uint32_t crc=crc32(
+            0,
+            reinterpret_cast<const Bytef*>(buf.data()),
+            buf.size()
+        );
         if(
-            !write_all(fd,&klen,sizeof(klen)).ok() ||
-            !write_all(fd,key.data(),klen).ok() ||
-            !write_all(fd,&vlen,sizeof(vlen)).ok() ||
-            !write_all(fd,value.data(),vlen).ok()
+            write(fd,&crc,sizeof(crc))!=sizeof(crc) ||
+            write(fd,buf.data(),buf.size())!= (ssize_t)(buf.size())
 
         ){
             close(fd);
@@ -67,16 +81,33 @@ Status read_segment(
     if(fd<0)return Status::Error("SEGMENT_OPEN_FAILED");
 
     while(true){
+        uint32_t stored_crc;
+        if(read(fd, &stored_crc, sizeof(stored_crc)) != sizeof(stored_crc))break;
+
         uint32_t klen,vlen;
 
         if(read(fd,&klen,sizeof(klen))!=sizeof(klen))break;
         if(read(fd,&vlen,sizeof(vlen))!=sizeof(vlen))break;
 
-        string key(klen,'\0');
-        string val(vlen,'\0');
+        vector<char>buf(sizeof(klen)+sizeof(vlen)+klen+vlen);
+        size_t off=0;
+        memcpy(buf.data()+off,&klen,sizeof(klen));off+=sizeof(klen);
+        memcpy(buf.data()+off,&vlen,sizeof(vlen));off+=sizeof(vlen);
 
-        if(read(fd,key.data(),klen) != (ssize_t)(klen))break;
-        if(read(fd,val.data(),vlen) != (ssize_t)(vlen))break;
+        if(read(fd,buf.data()+off,klen+vlen)!=(ssize_t)(klen+vlen))break;
+
+        uint32_t calc_crc=crc32(
+            0,
+            reinterpret_cast<const Bytef*>(buf.data()),
+            buf.size()
+        );
+
+        if(calc_crc!=stored_crc){
+            break;
+        }
+
+        string key(buf.data()+sizeof(klen)+sizeof(vlen),klen);
+        string val(buf.data()+sizeof(klen)+sizeof(vlen)+klen,vlen);
 
         out[key]=val;
     }

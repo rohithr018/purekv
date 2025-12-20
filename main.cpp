@@ -3,6 +3,7 @@
 #include <vector>
 #include <cstdlib>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "kv_engine.h"
 
@@ -10,31 +11,30 @@ using namespace std;
 
 /* ---------------- Concurrency Test ---------------- */
 void concurrency_test() {
-    cout << "[TEST] Concurrency test started\n";
+    cout << "[TEST] Fine-grained concurrency test\n";
 
-    KVEngine* engine = CreateKVEngine();
+    KVEngine* e = CreateKVEngine();
 
-    auto writer = [&]() {
-        for (int i = 0; i < 1000; i++) {
-            engine->put("k" + to_string(i),
-                        "v" + to_string(i));
-        }
-    };
+    for (int i = 0; i < 1000; i++) {
+        e->put("k" + to_string(i), "v" + to_string(i));
+    }
 
     auto reader = [&]() {
         string v;
         for (int i = 0; i < 1000; i++) {
-            engine->get("k" + to_string(i), &v);
+            e->get("k" + to_string(i), &v);
         }
     };
 
-    thread t1(writer), t2(writer), t3(reader);
-    t1.join();
-    t2.join();
-    t3.join();
+    vector<thread> readers;
+    for (int i = 0; i < 8; i++) {
+        readers.emplace_back(reader);
+    }
 
-    cout << "[PASS] Concurrency test passed\n";
-    delete engine;
+    for (auto& t : readers) t.join();
+
+    cout << "[PASS] Concurrent reads succeeded\n";
+    delete e;
 }
 
 /* ---------------- Recovery Test ---------------- */
@@ -163,6 +163,43 @@ void compaction_test() {
     delete engine;
 }
 
+void corruption_test() {
+    cout << "[TEST] Segment corruption handling\n";
+
+    {
+        KVEngine* e = CreateKVEngine();
+        e->put("X", "100");
+
+        // Force flush
+        for (int i = 0; i < 10; i++) {
+            e->put("pad" + to_string(i), "v");
+        }
+        delete e;
+    }
+
+    // WAL must be removed so only segment is used
+    unlink("wal/kv.wal");
+
+    // Corrupt the segment
+    int fd = open("segments/seg_0.sst", O_WRONLY);
+    uint32_t junk = 0xdeadbeef;
+    write(fd, &junk, sizeof(junk));
+    close(fd);
+
+    KVEngine* e2 = CreateKVEngine();
+    string v;
+    Status s = e2->get("X", &v);
+
+    if (s.ok()) {
+        cout << "[FAIL] Corruption not detected\n";
+        exit(1);
+    }
+
+    cout << "[PASS] Corruption detected safely\n";
+    delete e2;
+}
+
+
 int main(int argc, char** argv) {
 
     if (argc < 2) {
@@ -175,19 +212,15 @@ int main(int argc, char** argv) {
 
     string mode = argv[1];
 
-    if (mode == "concurrency") {
-        concurrency_test();
-    } else if (mode == "crash") {
-        recovery_test();
-    } else if (mode == "verify") {
-        verify_recovery();
-    }else if (mode == "flush") {
-        flush_test();
-    }else if (mode == "compact") {
-        compaction_test();
-    }else {
-        cout << "Unknown mode\n";
-    }
+    if (mode == "concurrency")concurrency_test();
+    else if (mode == "crash") recovery_test();
+    else if (mode == "verify")verify_recovery();
+    else if (mode == "flush")flush_test();
+    else if (mode == "compact")compaction_test();
+    else if (mode == "corrupt") corruption_test();
+
+    else cout << "Unknown mode\n";
+    
 
     return 0;
 }
